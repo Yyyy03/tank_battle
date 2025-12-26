@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>坦克大战 - Phaser 模式</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div id="game-container">
+    <div id="phaser-root" aria-label="Tank Battle Phaser Mode"></div>
+    <div id="hud">
+      <div>模式: Phaser</div>
+      <div>生命: <span id="phaser-lives">3</span></div>
+      <div>分数: <span id="phaser-score">0</span></div>
+    </div>
+  </div>
+  <div id="help">
+    <p>移动：WASD / 方向键 | 发射：Space | 返回：<a href="index.html">经典模式</a></p>
+    <p>Phaser.js：碰撞/动画/资源管理更成熟，但依赖更多、结构更复杂。</p>
+  </div>
+  <script src="https://cdn.jsdelivr.net/npm/phaser@3.70.0/dist/phaser.min.js"></script>
+  <script src="phaser-game.js"></script>
+</body>
+</html>
