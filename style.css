@@ -25,6 +25,10 @@ canvas {
   background: #10141c;
 }
 
+#phaser-root canvas {
+  display: block;
+}
+
 #hud {
   position: absolute;
   top: 8px;
@@ -67,4 +71,13 @@ canvas {
   margin-top: 16px;
   font-size: 14px;
   color: #cbd5f5;
+}
+
+#help a {
+  color: #38bdf8;
+  text-decoration: none;
+}
+
+#help a:hover {
+  text-decoration: underline;
 }
