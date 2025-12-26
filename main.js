@@ -17,15 +17,51 @@
       particles: { count: 16, speed: 120, life: 0.6 },
     },
     enemyTypes: {
-      scout: { size: 24, speed: 110, maxHp: 2, fireCooldown: 0.9, detectRange: 200, attackRange: 150 },
-      heavy: { size: 28, speed: 80, maxHp: 4, fireCooldown: 1.2, detectRange: 220, attackRange: 170 },
-      sniper: { size: 24, speed: 95, maxHp: 2, fireCooldown: 0.6, detectRange: 260, attackRange: 210 },
+      scout: {
+        size: 24,
+        speed: 105,
+        maxHp: 2,
+        fireCooldown: 1.1,
+        detectRange: 180,
+        attackRange: 135,
+        accuracy: 0.65,
+      },
+      heavy: {
+        size: 28,
+        speed: 75,
+        maxHp: 4,
+        fireCooldown: 1.4,
+        detectRange: 200,
+        attackRange: 155,
+        accuracy: 0.55,
+      },
+      sniper: {
+        size: 24,
+        speed: 90,
+        maxHp: 2,
+        fireCooldown: 0.85,
+        detectRange: 230,
+        attackRange: 190,
+        accuracy: 0.7,
+      },
     },
     ai: {
       retreatThreshold: 0.3,
       retreatDuration: 1.2,
       patrolTurnMin: 0.6,
       patrolTurnMax: 1.6,
+      aimHoldMin: 0.35,
+      aimHoldMax: 0.7,
+    },
+    powerups: {
+      size: 16,
+      lifetime: 8,
+      dropChance: 0.35,
+      types: {
+        repair: { label: "修", color: "#22c55e" },
+        rapid: { label: "速", color: "#38bdf8", duration: 6 },
+        shield: { label: "盾", color: "#facc15", duration: 5 },
+      },
     },
     levels: [
       {
@@ -77,6 +113,31 @@
           { type: "heavy", count: 2 },
         ],
       },
+      {
+        name: "Level 3",
+        map: [
+          "SSSSSSSSSSSSSSSSSSSS",
+          "S..BB....SS....BB...S",
+          "S..BB....SS....BB...S",
+          "S...................S",
+          "S..SS..BB....BB..SS.S",
+          "S..BB..SS....SS..BB.S",
+          "S...................S",
+          "S....SS..BB..BB..SS.S",
+          "S....SS..BB..BB..SS.S",
+          "S...................S",
+          "S..BB..SS....SS..BB.S",
+          "S..SS..BB....BB..SS.S",
+          "S...................S",
+          "S..BB....SS....BB...S",
+          "SSSSSSSSSSSSSSSSSSSS",
+        ],
+        enemies: [
+          { type: "scout", count: 3 },
+          { type: "sniper", count: 2 },
+          { type: "heavy", count: 2 },
+        ],
+      },
     ],
   };
 
@@ -88,6 +149,7 @@
   const livesEl = document.getElementById("lives");
   const scoreEl = document.getElementById("score");
   const levelEl = document.getElementById("level");
+  const buffsEl = document.getElementById("buffs");
   const overlay = document.getElementById("overlay");
 
   const Direction = {
@@ -115,6 +177,12 @@
 
     isPressed(code) {
       return this.keys.has(code);
+    }
+
+    consume(code) {
+      if (!this.keys.has(code)) return false;
+      this.keys.delete(code);
+      return true;
     }
   }
 
@@ -305,9 +373,11 @@
       super(config.x, config.y, config.size);
       this.color = config.color;
       this.speed = config.speed;
+      this.baseSpeed = config.speed;
       this.maxHp = config.maxHp;
       this.hp = config.maxHp;
       this.fireCooldown = config.fireCooldown;
+      this.baseFireCooldown = config.fireCooldown;
       this.isPlayer = config.isPlayer;
       this.direction = Direction.UP;
       this.cooldown = 0;
@@ -446,6 +516,31 @@
     }
   }
 
+  class PowerUp extends Entity {
+    constructor(x, y, type) {
+      super(x, y, CONFIG.powerups.size);
+      this.type = type;
+      this.timer = CONFIG.powerups.lifetime;
+    }
+
+    update(dt) {
+      this.timer = Math.max(0, this.timer - dt);
+    }
+
+    draw(context) {
+      context.fillStyle = this.type.color;
+      context.fillRect(this.x - this.size / 2, this.y - this.size / 2, this.size, this.size);
+      context.strokeStyle = "rgba(15, 23, 42, 0.9)";
+      context.lineWidth = 2;
+      context.strokeRect(this.x - this.size / 2, this.y - this.size / 2, this.size, this.size);
+      context.fillStyle = "#0f172a";
+      context.font = "12px sans-serif";
+      context.textAlign = "center";
+      context.textBaseline = "middle";
+      context.fillText(this.type.label, this.x, this.y + 0.5);
+    }
+  }
+
   class StateMachine {
     constructor(states, initial) {
       this.states = states;
@@ -475,6 +570,8 @@
       this.retreatTimer = 0;
       this.patrolTimer = 0;
       this.direction = directionList[Math.floor(Math.random() * directionList.length)];
+      this.aimTimer = 0;
+      this.aimDirection = this.direction;
       this.ai = this.createAI();
     }
 
@@ -505,8 +602,13 @@
         },
         Attack: {
           transition: (context) => context.transitionTo,
-          update: (context) => {
-            this.direction = directionToTarget(this, context.player);
+          update: (context, dt) => {
+            this.aimTimer -= dt;
+            if (this.aimTimer <= 0) {
+              this.aimDirection = pickAimDirection(this, context.player, this.type.accuracy);
+              this.aimTimer = randomRange(CONFIG.ai.aimHoldMin, CONFIG.ai.aimHoldMax);
+            }
+            this.direction = this.aimDirection;
             this.fire(context.bullets);
           },
         },
@@ -623,6 +725,10 @@
             overlay.classList.add("hidden");
           },
           update: (dt) => {
+            if (this.game.input.consume("KeyR")) {
+              this.game.reset();
+              return;
+            }
             this.game.update(dt);
           },
           render: () => {
@@ -636,7 +742,7 @@
             overlay.classList.remove("hidden");
           },
           update: () => {
-            if (this.game.input.isPressed("KeyR")) {
+            if (this.game.input.consume("KeyR")) {
               this.game.reset();
               this.setState("Playing");
             }
@@ -669,6 +775,8 @@
       this.camera = new Camera();
       this.feedback = new Feedback();
       this.bullets = [];
+      this.powerUps = [];
+      this.buffTimers = { rapid: 0, shield: 0 };
       this.score = 0;
       this.lives = CONFIG.player.maxHp;
       this.lastTime = 0;
@@ -706,7 +814,9 @@
       this.map = this.levelManager.map;
       this.enemies = [];
       this.bullets = [];
+      this.powerUps = [];
       this.feedback = new Feedback();
+      this.buffTimers = { rapid: 0, shield: 0 };
       this.spawnPlayer();
       this.updateHud();
     }
@@ -715,6 +825,38 @@
       livesEl.textContent = this.lives.toString();
       scoreEl.textContent = this.score.toString();
       levelEl.textContent = (this.levelManager.levelIndex + 1).toString();
+    }
+
+    updateBuffHud() {
+      const buffs = [];
+      if (this.buffTimers.rapid > 0) {
+        buffs.push(`速${Math.ceil(this.buffTimers.rapid)}`);
+      }
+      if (this.buffTimers.shield > 0) {
+        buffs.push(`盾${Math.ceil(this.buffTimers.shield)}`);
+      }
+      buffsEl.textContent = buffs.length ? buffs.join(" / ") : "-";
+    }
+
+    trySpawnPowerUp(x, y) {
+      if (Math.random() > CONFIG.powerups.dropChance) return;
+      const types = Object.keys(CONFIG.powerups.types);
+      const pick = types[Math.floor(Math.random() * types.length)];
+      this.powerUps.push(new PowerUp(x, y, CONFIG.powerups.types[pick]));
+    }
+
+    applyPowerUp(powerUp) {
+      if (powerUp.type.label === "修") {
+        this.player.hp = Math.min(this.player.maxHp, this.player.hp + 1);
+      }
+      if (powerUp.type.label === "速") {
+        this.buffTimers.rapid = Math.max(this.buffTimers.rapid, powerUp.type.duration);
+      }
+      if (powerUp.type.label === "盾") {
+        this.buffTimers.shield = Math.max(this.buffTimers.shield, powerUp.type.duration);
+      }
+      this.feedback.hitEffect(this.player.x, this.player.y);
+      this.updateBuffHud();
     }
 
     handleInput(dt) {
@@ -753,6 +895,14 @@
       this.feedback.update(dt);
       this.player.updateCooldown(dt);
       this.enemies.forEach((enemy) => enemy.updateCooldown(dt));
+      this.buffTimers.rapid = Math.max(0, this.buffTimers.rapid - dt);
+      this.buffTimers.shield = Math.max(0, this.buffTimers.shield - dt);
+      this.player.fireCooldown =
+        this.player.baseFireCooldown * (this.buffTimers.rapid > 0 ? 0.55 : 1);
+      if (this.buffTimers.shield > 0) {
+        this.player.invulnerable = Math.max(this.player.invulnerable, 0.1);
+      }
+      this.updateBuffHud();
 
       const aiContext = {
         player: this.player,
@@ -771,6 +921,7 @@
             }
             if (killed && bullet.owner.isPlayer && !target.isPlayer) {
               this.score += 100;
+              this.trySpawnPowerUp(target.x, target.y);
               this.updateHud();
             }
           },
@@ -795,6 +946,16 @@
         }
       });
       this.enemies = this.enemies.filter((enemy) => enemy.isAlive || enemy.isDying);
+
+      this.powerUps.forEach((powerUp) => powerUp.update(dt));
+      this.powerUps = this.powerUps.filter((powerUp) => powerUp.timer > 0);
+      this.powerUps = this.powerUps.filter((powerUp) => {
+        if (!rectsOverlap(this.player.rect, powerUp.rect)) {
+          return true;
+        }
+        this.applyPowerUp(powerUp);
+        return false;
+      });
 
       while (this.enemies.length < 3 && this.levelManager.enemyQueue.length > 0) {
         const enemy = this.levelManager.spawnEnemy();
@@ -826,6 +987,7 @@
       ctx.fillStyle = "#0b1120";
       ctx.fillRect(0, 0, CONFIG.canvas.width, CONFIG.canvas.height);
       this.map.draw(ctx);
+      this.powerUps.forEach((powerUp) => powerUp.draw(ctx));
       this.player.draw(ctx);
       this.enemies.forEach((enemy) => enemy.draw(ctx));
       this.bullets.forEach((bullet) => bullet.draw(ctx));
@@ -885,6 +1047,15 @@
     if (toward === Direction.DOWN) return Direction.UP;
     if (toward === Direction.LEFT) return Direction.RIGHT;
     return Direction.LEFT;
+  }
+
+  function pickAimDirection(from, target, accuracy) {
+    if (Math.random() <= accuracy) {
+      return directionToTarget(from, target);
+    }
+    const aimed = directionToTarget(from, target);
+    const options = directionList.filter((direction) => direction !== aimed);
+    return options[Math.floor(Math.random() * options.length)];
   }
 
   const game = new Game();
