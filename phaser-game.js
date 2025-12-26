@@ -1,4 +1,17 @@
 (() => {
+  const root = document.getElementById("phaser-root");
+  if (!window.Phaser) {
+    if (root) {
+      const message = document.createElement("div");
+      message.className = "phaser-fallback";
+      message.innerHTML = `
+        <h2>Phaser 资源加载失败</h2>
+        <p>当前环境无法从外部 CDN 拉取 Phaser.js，请确认网络可用，或将 Phaser 脚本下载到本地并替换引用。</p>
+      `;
+      root.appendChild(message);
+    }
+    return;
+  }
   const CONFIG = {
     width: 640,
     height: 480,
